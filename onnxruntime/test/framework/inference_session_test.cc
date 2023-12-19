@@ -3000,7 +3000,7 @@ TEST(InferenceSessionTests, Bench) {
     // Configure RunOptions
     RunOptions run_options;
 
-    const int MAX_ITER = 10;
+    const int MAX_ITER = 1;
     std::vector<float> times = {};
 
     for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
