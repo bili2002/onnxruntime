@@ -10,6 +10,8 @@
 #include <iterator>
 #include <thread>
 #include <fstream>
+#include <ctime>
+#include <algorithm>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
@@ -252,8 +254,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
-                           &elem);
+      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x, &elem);
     }
   }
 
@@ -2953,6 +2954,74 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
+}
+
+TEST(InferenceSessionTests, Bench) {
+    // Initialize logging manager
+    auto logging_manager = std::make_unique<logging::LoggingManager>(
+            std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+            LoggingManager::InstanceType::Temporal);
+
+    // Create environment
+    std::unique_ptr<Environment> env;
+    ASSERT_TRUE(Environment::Create(std::move(logging_manager), env).IsOK());
+
+    // Configure session options
+    SessionOptions so;
+    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    so.graph_optimization_level = TransformerLevel::Level2;
+    so.intra_op_param.thread_pool_size = 1;
+
+    // Initialize and load the InferenceSession
+    InferenceSession session{so, *env};
+
+    ASSERT_STATUS_OK(session.Load("model.onnx"));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // Input numpy array
+    std::fstream input_file("input.txt");
+    std::vector<float> values = {};
+    for(float number; input_file >> number; ) { values.push_back(number); }
+
+    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 5, 5};
+
+    std::cout << "Loaded: " << values.size() << std::endl;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("float_input", ml_value));
+
+    // Configure output
+    std::vector<std::string> output_names;
+    output_names.push_back("variable");
+    std::vector<OrtValue> fetches;
+
+    // Configure RunOptions
+    RunOptions run_options;
+
+    const int MAX_ITER = 10;
+    std::vector<float> times = {};
+
+    for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
+        const auto begin = clock();
+
+        {
+            common::Status st = session.Run(run_options, feeds, output_names, &fetches);
+            if (!st.IsOK()) {
+                std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+            }
+            ASSERT_TRUE(st.IsOK());
+        }
+
+        const auto end = clock();
+        const auto time_in_seconds = (double)(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "Total time in predict " << time_in_seconds << std::endl; 
+        times.push_back(time_in_seconds);
+    }
+
+    const auto average = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+    std::cout << "Average " << average << std::endl;
 }
 
 }  // namespace test
