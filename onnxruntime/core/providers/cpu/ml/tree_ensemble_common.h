@@ -341,6 +341,9 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   return Status::OK();
 }
 
+#define NODE_ADD_LAMDA(CMP)                                                                            \
+  node.compFunc = [](auto left, auto right) {return left CMP right;};                                  \
+
 template <typename InputType, typename ThresholdType, typename OutputType>
 size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids,
@@ -365,6 +368,31 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
 
   TreeNodeElement<ThresholdType> node;
   node.flags = static_cast<uint8_t>(cmodes[i]);
+  switch (cmodes[i])
+  {
+  case NODE_MODE::BRANCH_LEQ:
+    NODE_ADD_LAMDA(<=)
+    break;
+  case NODE_MODE::BRANCH_LT:
+    NODE_ADD_LAMDA(<)
+    break;
+  case NODE_MODE::BRANCH_GT:
+    NODE_ADD_LAMDA(>)
+    break;
+  case NODE_MODE::BRANCH_GTE:
+    NODE_ADD_LAMDA(>=)
+    break;
+  case NODE_MODE::BRANCH_EQ:
+    NODE_ADD_LAMDA(==)
+    break;
+  case NODE_MODE::BRANCH_NEQ:
+    NODE_ADD_LAMDA(!=)
+    break;
+  default:
+    node.compFunc = nullptr;
+    break;
+  }
+
   node.feature_id = static_cast<int>(nodes_featureids[i]);
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
@@ -694,76 +722,23 @@ TreeNodeElement<ThresholdType>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
   InputType val;
-  if (same_mode_) {
-    switch (root->mode()) {
-      case NODE_MODE::BRANCH_LEQ:
-        if (has_missing_tracks_) {
-          while (root->is_not_leaf()) {
-            val = x_data[root->feature_id];
-            root = (val <= root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val)))
-                       ? root->truenode_or_weight.ptr
-                       : root + 1;
-          }
-        } else {
-          while (root->is_not_leaf()) {
-            val = x_data[root->feature_id];
-            root = val <= root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;
-          }
-        }
-        break;
-      case NODE_MODE::BRANCH_LT:
-        TREE_FIND_VALUE(<)
-        break;
-      case NODE_MODE::BRANCH_GTE:
-        TREE_FIND_VALUE(>=)
-        break;
-      case NODE_MODE::BRANCH_GT:
-        TREE_FIND_VALUE(>)
-        break;
-      case NODE_MODE::BRANCH_EQ:
-        TREE_FIND_VALUE(==)
-        break;
-      case NODE_MODE::BRANCH_NEQ:
-        TREE_FIND_VALUE(!=)
-        break;
-      case NODE_MODE::LEAF:
-        break;
-    }
-  } else {  // Different rules to compare to node thresholds.
-    ThresholdType threshold;
-    while (1) {
+
+  if (has_missing_tracks_) {
+    while (root->compFunc != nullptr) {
       val = x_data[root->feature_id];
-      threshold = root->value_or_unique_weight;
-      switch (root->mode()) {
-        case NODE_MODE::BRANCH_LEQ:
-          root = val <= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
-          break;
-        case NODE_MODE::BRANCH_LT:
-          root = val < threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                    : root + 1;
-          break;
-        case NODE_MODE::BRANCH_GTE:
-          root = val >= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
-          break;
-        case NODE_MODE::BRANCH_GT:
-          root = val > threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                    : root + 1;
-          break;
-        case NODE_MODE::BRANCH_EQ:
-          root = val == threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
-          break;
-        case NODE_MODE::BRANCH_NEQ:
-          root = val != threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
-          break;
-        case NODE_MODE::LEAF:
-          return root;
-      }
+      root = (root->compFunc(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
+                  ? root->truenode_or_weight.ptr
+                  : root + 1;
+    }
+  } else {
+    while (root->is_not_leaf()) {
+      val = x_data[root->feature_id];
+      root = root->compFunc(val, root->value_or_unique_weight)
+                  ? root->truenode_or_weight.ptr
+                  : root + 1;
     }
   }
+
   return root;
 }
 
