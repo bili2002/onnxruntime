@@ -723,19 +723,39 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
   InputType val;
 
-  if (has_missing_tracks_) {
-    while (root->compFunc != nullptr) {
-      val = x_data[root->feature_id];
-      root = (root->compFunc(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
-                  ? root->truenode_or_weight.ptr
-                  : root + 1;
+  if (same_mode_) {
+    auto func = root->compFunc;
+    if (has_missing_tracks_) {
+      while (root->compFunc != nullptr) {
+        val = x_data[root->feature_id];
+        root = (func(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
+                    ? root->truenode_or_weight.ptr
+                    : root + 1;
+      }
+    } else {
+      while (root->is_not_leaf()) {
+        val = x_data[root->feature_id];
+        root = func(val, root->value_or_unique_weight)
+                    ? root->truenode_or_weight.ptr
+                    : root + 1;
+      }
     }
-  } else {
-    while (root->is_not_leaf()) {
-      val = x_data[root->feature_id];
-      root = root->compFunc(val, root->value_or_unique_weight)
-                  ? root->truenode_or_weight.ptr
-                  : root + 1;
+  }
+  else {
+    if (has_missing_tracks_) {
+      while (root->compFunc != nullptr) {
+        val = x_data[root->feature_id];
+        root = (root->compFunc(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
+                    ? root->truenode_or_weight.ptr
+                    : root + 1;
+      }
+    } else {
+      while (root->is_not_leaf()) {
+        val = x_data[root->feature_id];
+        root = root->compFunc(val, root->value_or_unique_weight)
+                    ? root->truenode_or_weight.ptr
+                    : root + 1;
+      }
     }
   }
 
