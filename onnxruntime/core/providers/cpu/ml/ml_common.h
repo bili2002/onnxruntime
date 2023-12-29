@@ -30,6 +30,31 @@ enum NODE_MODE : uint8_t {
   BRANCH_NEQ = 12
 };
 
+constexpr inline NODE_MODE ReverseNodeMode(const NODE_MODE mode) {
+  switch (mode) {
+    case NODE_MODE::BRANCH_LEQ:
+      return NODE_MODE::BRANCH_GT;
+
+    case NODE_MODE::BRANCH_LT:
+      return NODE_MODE::BRANCH_GTE;
+
+    case NODE_MODE::BRANCH_GTE:
+      return NODE_MODE::BRANCH_LT;
+
+    case NODE_MODE::BRANCH_GT:
+      return NODE_MODE::BRANCH_LEQ;
+
+    case NODE_MODE::BRANCH_EQ:
+      return NODE_MODE::BRANCH_NEQ;
+
+    case NODE_MODE::BRANCH_NEQ:
+      return NODE_MODE::BRANCH_EQ;
+
+    default:
+      return mode;
+  }
+}
+
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_LEQ") {
     return NODE_MODE::BRANCH_LEQ;
