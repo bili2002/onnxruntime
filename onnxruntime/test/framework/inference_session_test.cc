@@ -2975,15 +2975,15 @@ TEST(InferenceSessionTests, Bench) {
     // Initialize and load the InferenceSession
     InferenceSession session{so, *env};
 
-    ASSERT_STATUS_OK(session.Load("model.onnx"));
+    ASSERT_STATUS_OK(session.Load("model3.onnx"));
     ASSERT_STATUS_OK(session.Initialize());
 
     // Input numpy array
-    std::fstream input_file("input.txt");
+    std::fstream input_file("input3.txt");
     std::vector<float> values = {};
     for(float number; input_file >> number; ) { values.push_back(number); }
 
-    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 5, 5};
+    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 15, 15};
 
     std::cout << "Loaded: " << values.size() << std::endl;
 
