@@ -41,7 +41,7 @@ template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
   std::vector<ThresholdType> base_values_;
-  std::vector<TreeNodeElement<ThresholdType>> nodes_;
+  mutable std::vector<TreeNodeElement<ThresholdType>> nodes_;
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
@@ -673,10 +673,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   if (has_missing_tracks_) {                                                                           \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
-      root = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))) \
-                 ? root->truenode_or_weight.ptr                                                        \
-                 : root + 1;                                                                           \
-    }                                                                                                  \
+      size_t true_node = root->truenode_or_weight.ptr - &nodes_[0]; \
+      size_t false_node = (root + 1) - &nodes_[0]; \
+      bool cond = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))); \
+      size_t root_node = true_node * cond + false_node * !cond; \
+      root = &nodes_[root_node];\
+    }\
   } else {                                                                                             \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
