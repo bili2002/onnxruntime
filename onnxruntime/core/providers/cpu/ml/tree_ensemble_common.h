@@ -673,11 +673,11 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   if (has_missing_tracks_) {                                                                           \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
-      size_t true_node = root->truenode_or_weight.ptr - &nodes_[0]; \
-      size_t false_node = (root + 1) - &nodes_[0]; \
+      size_t true_node = root->truenode_or_weight.ptr - root; \
+      size_t false_node = 1; \
       bool cond = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))); \
       size_t root_node = true_node * cond + false_node * !cond; \
-      root = &nodes_[root_node];\
+      root = root_node + root;\
     }\
   } else {                                                                                             \
     while (root->is_not_leaf()) {                                                                      \
