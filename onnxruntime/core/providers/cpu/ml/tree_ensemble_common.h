@@ -673,18 +673,23 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   if (has_missing_tracks_) {                                                                           \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
-      size_t true_node = root->truenode_or_weight.ptr - root; \
-      size_t false_node = 1; \
-      bool cond = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))); \
-      size_t root_node = true_node * cond + false_node * !cond; \
-      root = root_node + root;\
-    }\
+      bool cond = val CMP root->value_or_unique_weight ||                                              \
+                              (root->is_missing_track_true() && _isnan_(val));                         \
+      root += (root->truenode_or_weight.ptr - root) * cond + !cond;                                    \
+    }                                                                                                  \
   } else {                                                                                             \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
-      root = val CMP root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;           \
+      bool cond = val CMP root->value_or_unique_weight;                                                \
+      root += (root->truenode_or_weight.ptr - root) * cond + !cond;                                    \
     }                                                                                                  \
   }
+
+#define NODE_FIND_VALUE(CMP)                                                                           \
+  cond = val CMP root->value_or_unique_weight ||                                                       \
+                          (root->is_missing_track_true() && _isnan_(val));                             \
+  root += (root->truenode_or_weight.ptr - root) * cond + !cond;
+
 
 inline bool _isnan_(float x) { return std::isnan(x); }
 inline bool _isnan_(double x) { return std::isnan(x); }
@@ -699,19 +704,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
   if (same_mode_) {
     switch (root->mode()) {
       case NODE_MODE::BRANCH_LEQ:
-        if (has_missing_tracks_) {
-          while (root->is_not_leaf()) {
-            val = x_data[root->feature_id];
-            root = (val <= root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val)))
-                       ? root->truenode_or_weight.ptr
-                       : root + 1;
-          }
-        } else {
-          while (root->is_not_leaf()) {
-            val = x_data[root->feature_id];
-            root = val <= root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;
-          }
-        }
+        TREE_FIND_VALUE(<=)
         break;
       case NODE_MODE::BRANCH_LT:
         TREE_FIND_VALUE(<)
@@ -736,30 +729,25 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     while (1) {
       val = x_data[root->feature_id];
       threshold = root->value_or_unique_weight;
+      bool cond;
       switch (root->mode()) {
         case NODE_MODE::BRANCH_LEQ:
-          root = val <= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
+          NODE_FIND_VALUE(<=)
           break;
         case NODE_MODE::BRANCH_LT:
-          root = val < threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                    : root + 1;
+          NODE_FIND_VALUE(<)
           break;
         case NODE_MODE::BRANCH_GTE:
-          root = val >= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
+          NODE_FIND_VALUE(>=)
           break;
         case NODE_MODE::BRANCH_GT:
-          root = val > threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                    : root + 1;
+          NODE_FIND_VALUE(>)
           break;
         case NODE_MODE::BRANCH_EQ:
-          root = val == threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
+          NODE_FIND_VALUE(==)
           break;
         case NODE_MODE::BRANCH_NEQ:
-          root = val != threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
-                                                                                     : root + 1;
+          NODE_FIND_VALUE(!=)
           break;
         case NODE_MODE::LEAF:
           return root;
