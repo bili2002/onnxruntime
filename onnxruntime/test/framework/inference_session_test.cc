@@ -2956,7 +2956,95 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 
-TEST(InferenceSessionTests, Bench) {
+
+float calculateSD(std::vector<float>::iterator beg, std::vector<float>::iterator end) {
+    float sum = 0.0, mean, standardDeviation = 0.0;
+    int n = 0;
+
+    for (auto curr = beg; curr != end; curr++) {
+        sum += *curr;
+        n++;
+    }
+
+    mean = sum / n;
+
+    for (auto curr = beg; curr != end; curr++) {
+        standardDeviation += (*curr - mean) * (*curr - mean);
+    }
+
+    return sqrt(standardDeviation / n);
+}
+
+TEST(InferenceSessionTests, BenchSameMode) {
+    // Initialize logging manager
+    auto logging_manager = std::make_unique<logging::LoggingManager>(
+            std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+            LoggingManager::InstanceType::Temporal);
+
+    // Create environment
+    std::unique_ptr<Environment> env;
+    ASSERT_TRUE(Environment::Create(std::move(logging_manager), env).IsOK());
+
+    // Configure session options
+    SessionOptions so;
+    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    so.graph_optimization_level = TransformerLevel::Level2;
+    so.intra_op_param.thread_pool_size = 1;
+
+    // Initialize and load the InferenceSession
+    InferenceSession session{so, *env};
+
+    ASSERT_STATUS_OK(session.Load("model.onnx"));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // Input numpy array
+    std::fstream input_file("input.txt");
+    std::vector<float> values = {};
+    for(float number; input_file >> number; ) { values.push_back(number); }
+
+    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 5, 5};
+
+    std::cout << "Loaded: " << values.size() << std::endl;
+
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("float_input", ml_value));
+
+    // Configure output
+    std::vector<std::string> output_names;
+    output_names.push_back("variable");
+    std::vector<OrtValue> fetches;
+
+    // Configure RunOptions
+    RunOptions run_options;
+
+    const int MAX_ITER = 10;
+    std::vector<float> times = {};
+
+    for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
+        const auto begin = clock();
+
+        {
+            common::Status st = session.Run(run_options, feeds, output_names, &fetches);
+            if (!st.IsOK()) {
+                std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+            }
+            ASSERT_TRUE(st.IsOK());
+        }
+
+        const auto end = clock();
+        const auto time_in_seconds = (double)(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "Total time in predict " << time_in_seconds << std::endl; 
+        times.push_back(time_in_seconds);
+    }
+
+    const auto average = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+    const auto SD = calculateSD(times.begin(), times.end());
+    std::cout << "Same Mode - Average " << average << "; Standard Deviation " << SD << std::endl;
+}
+
+TEST(InferenceSessionTests, BenchNotSameMode) {
     // Initialize logging manager
     auto logging_manager = std::make_unique<logging::LoggingManager>(
             std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
@@ -3021,7 +3109,8 @@ TEST(InferenceSessionTests, Bench) {
     }
 
     const auto average = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-    std::cout << "Average " << average << std::endl;
+    const auto SD = calculateSD(times.begin(), times.end());
+    std::cout << "Not SM - Average " << average << "; Standard Deviation " << SD << std::endl;
 }
 
 }  // namespace test
