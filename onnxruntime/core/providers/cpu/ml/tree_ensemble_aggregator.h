@@ -96,11 +96,6 @@ struct TreeNodeElement {
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> truenode_or_weight;
-  uint8_t flags;
-
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
