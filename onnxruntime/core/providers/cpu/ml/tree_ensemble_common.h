@@ -41,12 +41,12 @@ template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
   std::vector<ThresholdType> base_values_;
-  std::vector<TreeNodeElement<ThresholdType>> nodes_;
+  std::vector<TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>> nodes_;
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
   std::vector<SparseValue<ThresholdType>> weights_;
-  std::vector<TreeNodeElement<ThresholdType>*> roots_;
+  std::vector<TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>*> roots_;
 
  public:
   TreeEnsembleCommon() {}
@@ -80,7 +80,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
               const std::vector<ThresholdType>& target_class_weights_as_tensor);
 
  protected:
-  TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(TreeNodeElement<ThresholdType>* root,
+  TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>* ProcessTreeNodeLeave(TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>* root,
                                                        const InputType* x_data) const;
 
   template <typename AGG>
@@ -312,7 +312,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       ORT_THROW("Unable to find node ", ind.tree_id, "-", ind.node_id, " (weights).");
     }
 
-    TreeNodeElement<ThresholdType>& leaf = nodes_[updated_mapping[found->second]];
+    TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>& leaf = nodes_[updated_mapping[found->second]];
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
       // models converted with an old version of onnxmltools. These weights are ignored.
@@ -363,25 +363,25 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   size_t node_pos = nodes_.size();
   updated_mapping[i] = node_pos;
 
-  TreeNodeElement<ThresholdType> node;
-  node.flags = static_cast<uint8_t>(cmodes[i]);
+  TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT> node;
+  // node.flags = static_cast<uint8_t>(cmodes[i]);
+  // if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
+  //   node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
+  // }
   node.feature_id = static_cast<int>(nodes_featureids[i]);
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
   }
   node.value_or_unique_weight =
       nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[i]) : nodes_values_as_tensor[i];
-  if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
-    node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
-  }
   nodes_.push_back(std::move(node));
+  std::cout<<node_pos<<' '<<nodes_[node_pos].is_not_leaf()<<std::endl;
   if (nodes_[node_pos].is_not_leaf()) {
     size_t false_branch =
         AddNodes(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
                  node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     if (false_branch != node_pos + 1) {
-      ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos, " with flags ",
-                static_cast<int>(nodes_[node_pos].flags));
+      ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos);
     }
     size_t true_branch =
         AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
@@ -690,9 +690,9 @@ inline bool _isnan_(int64_t) { return false; }
 inline bool _isnan_(int32_t) { return false; }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
-TreeNodeElement<ThresholdType>*
+TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
-    TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
+    TreeNodeElement<ThresholdType, TreeNodeElementLEQ_MT>* root, const InputType* x_data) const {
   InputType val;
   if (same_mode_) {
     switch (root->mode()) {
