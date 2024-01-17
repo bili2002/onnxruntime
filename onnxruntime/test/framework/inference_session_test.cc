@@ -3019,7 +3019,7 @@ TEST(InferenceSessionTests, BenchSameMode) {
     // Configure RunOptions
     RunOptions run_options;
 
-    const int MAX_ITER = 1;
+    const int MAX_ITER = 10;
     std::vector<float> times = {};
 
     for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
