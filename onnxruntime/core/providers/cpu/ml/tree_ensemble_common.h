@@ -273,6 +273,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // Let's construct nodes_ such that the false branch is always the next element in nodes_.
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
   std::vector<size_t> updated_mapping(nodes_treeids.size(), 0);
+  std::vector<std::pair<size_t, size_t>> roots_index;
   int64_t previous_tree_id = -1;
   for (i = 0; i < n_nodes_; ++i) {
     if (previous_tree_id == -1 || (previous_tree_id != node_tree_ids[i].tree_id)) {
@@ -281,9 +282,31 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       size_t root_position =
           AddNodes(i, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
                    nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
-      roots_.push_back(&nodes_[root_position]);
+      roots_index.push_back({i, root_position});
       previous_tree_id = tree_id;
     }
+  }
+
+  sort(roots_index.begin(), roots_index.end(), [&](
+    std::pair<size_t, size_t> left, std::pair<size_t, size_t> right){
+    if (nodes_[left.second].feature_id == nodes_[right.second].feature_id) {
+      return nodes_[left.second].value_or_unique_weight < nodes_[right.second].value_or_unique_weight;
+    }
+    return nodes_[left.second].feature_id < nodes_[right.second].feature_id;
+  });
+
+  updated_mapping.fill(0);
+  nodes_.clear();
+  nodes_.reserve(limit);
+
+  previous_tree_id = -1;
+  for (auto& curr : roots_index) {
+    int64_t tree_id = node_tree_ids[curr.first].tree_id;
+    size_t root_position =
+        AddNodes(curr.first, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
+                  nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
+    roots_.push_back(&nodes_[root_position]);
+    previous_tree_id = tree_id;
   }
 
   n_trees_ = roots_.size();
