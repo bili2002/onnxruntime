@@ -42,6 +42,12 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
   std::vector<ThresholdType> base_values_;
   std::vector<TreeNodeElement<ThresholdType>> nodes_;
+  mutable std::vector<size_t> went_left_child;
+  mutable std::vector<size_t> went_right_child;
+  mutable std::vector<size_t> tree_size;
+  mutable size_t big_cnt = 0;
+  mutable size_t small_cnt = 0;
+  mutable size_t it_number = 0;
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
@@ -91,10 +97,12 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
                   const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
                   const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
                   const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping,
-                  int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids, std::vector<size_t>& tree_size);
+                  int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids);
 
   size_t precalcTreesSize(const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids,
-                  const InlinedVector<size_t>& falsenode_ids, std::vector<size_t>& tree_size);
+                  const InlinedVector<size_t>& falsenode_ids);
+
+  double calcWeight(const size_t i) const;
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -217,8 +225,20 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   limit = static_cast<size_t>(n_nodes_);
   InlinedVector<TreeNodeElementId> node_tree_ids;
   node_tree_ids.reserve(limit);
+
   nodes_.clear();
+  tree_size.clear();
+  went_left_child.clear();
+  went_right_child.clear();
+  it_number = 0;
+  big_cnt = 0;
+  small_cnt = 0;
+
   nodes_.reserve(limit);
+  tree_size.resize(limit, 0);
+  went_left_child.resize(limit, 0);
+  went_right_child.resize(limit, 0);
+
   roots_.clear();
   std::unordered_map<TreeNodeElementId, size_t, TreeNodeElementId::hash_fn> node_tree_ids_map;
   node_tree_ids_map.reserve(limit);
@@ -273,12 +293,24 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
 
-  std::vector<size_t> tree_size(nodes_treeids.size(), 0);
+  int big = 0;
+  int small = 0;
   for (i = 0; i < n_nodes_; ++i) {
     if (tree_size[i] == 0) {
-        precalcTreesSize(i, cmodes, truenode_ids, falsenode_ids, tree_size);
+        precalcTreesSize(i, cmodes, truenode_ids, falsenode_ids);
+    }
+
+    if (!(cmodes[i] & NODE_MODE::LEAF)) {
+        // std::cout << i << "size: " << tree_size[i] << " - left: " << falsenode_ids[i]  << "; right: " << truenode_ids[i] << std::endl;
+        if (tree_size[falsenode_ids[i]] < tree_size[truenode_ids[i]]) {
+          big++;
+        }
+        else if (tree_size[truenode_ids[i]] < tree_size[falsenode_ids[i]]){
+          small++;
+        }
     }
   }
+  std::cout << "RESULTS: " << big << ' ' << small << std::endl;
 
   // Let's construct nodes_ such that the false branch is always the next element in nodes_.
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
@@ -290,7 +322,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       int64_t tree_id = node_tree_ids[i].tree_id;
       size_t root_position =
           AddNodes(i, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
-                   nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, tree_size);
+                   nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
       roots_.push_back(&nodes_[root_position]);
       previous_tree_id = tree_id;
     }
@@ -354,20 +386,60 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 template <typename InputType, typename ThresholdType, typename OutputType>
 size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::precalcTreesSize(
     const size_t i, const InlinedVector<NODE_MODE>& cmodes, const InlinedVector<size_t>& truenode_ids,
-    const InlinedVector<size_t>& falsenode_ids, std::vector<size_t>& tree_size) {
+    const InlinedVector<size_t>& falsenode_ids) {
 
   tree_size[i] = 1;
 
   if (!(cmodes[i] & NODE_MODE::LEAF)) {
     tree_size[i] +=
-        precalcTreesSize(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, tree_size);
+        precalcTreesSize(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids);
 
     tree_size[i] +=
-        precalcTreesSize(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, tree_size);
+        precalcTreesSize(truenode_ids[i], cmodes, truenode_ids, falsenode_ids);
   }
-
   return tree_size[i];
 }
+
+template <typename InputType, typename ThresholdType, typename OutputType>
+double TreeEnsembleCommon<InputType, ThresholdType, OutputType>::calcWeight(const size_t i) const {
+  double left_weight;
+  double right_weight;
+
+  if (nodes_[i].is_not_leaf()) {
+    left_weight =
+        calcWeight(i+1);
+
+    right_weight =
+        calcWeight(nodes_[i].truenode_or_weight.ptr - &nodes_[0]);
+  }
+  else {
+    return 1;
+  }
+
+  size_t total_visit = went_left_child[i] + went_right_child[i];
+  if (total_visit == 0) {
+    return 1;
+  }
+
+  double left_perc_weight = (double)went_left_child[i] * left_weight / total_visit;
+  double right_perc_weight = (double)went_right_child[i] * right_weight / total_visit;
+
+  // std::cout << "going to " << went_left_child[i] << ' ' << went_right_child[i] << std::endl;
+  // std::cout << "total operations " << left_perc_weight << ' ' << right_perc_weight << std::endl << std::endl;
+
+  if ((tree_size[i+1] > tree_size[right_weight] && went_left_child[i] > went_right_child[i]) ||
+      (tree_size[i+1] < tree_size[right_weight] && went_left_child[i] < went_right_child[i])) {
+    big_cnt++;
+  }
+  else if ((tree_size[i+1] > tree_size[right_weight] && went_left_child[i] < went_right_child[i]) ||
+      (tree_size[i+1] < tree_size[right_weight] && went_left_child[i] > went_right_child[i])) {
+    small_cnt++;
+  }
+
+  double new_weight = left_perc_weight + right_perc_weight + 1;
+  return new_weight;
+}
+
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
@@ -375,7 +447,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
     const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
     const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id,
-    const InlinedVector<TreeNodeElementId>& node_tree_ids, std::vector<size_t>& tree_size) {
+    const InlinedVector<TreeNodeElementId>& node_tree_ids) {
   // Validate this index maps to the same tree_id as the one we should be building.
   if (node_tree_ids[i].tree_id != tree_id) {
     ORT_THROW("Tree id mismatch. Expected ", tree_id, " but got ", node_tree_ids[i].tree_id, " at position ", i);
@@ -394,14 +466,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   TreeNodeElement<ThresholdType> node;
   auto falsenode_id = falsenode_ids[i];
   auto truenode_id = truenode_ids[i];
-  if (tree_size[falsenode_id] < tree_size[truenode_id] && !same_mode_) {
-    std::swap(falsenode_id, truenode_id);
-    node.flags = static_cast<uint8_t>(ReverseNodeMode(cmodes[i]));
-    node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
-  }
-  else {
-    node.flags = static_cast<uint8_t>(cmodes[i]);
-  }
+  node.flags = static_cast<uint8_t>(cmodes[i]);
   node.feature_id = static_cast<int>(nodes_featureids[i]);
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
@@ -415,14 +480,14 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   if (nodes_[node_pos].is_not_leaf()) {
     size_t false_branch =
         AddNodes(falsenode_id, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
-                 node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, tree_size);
+                 node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     if (false_branch != node_pos + 1) {
       ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos, " with flags ",
                 static_cast<int>(nodes_[node_pos].flags));
     }
     size_t true_branch =
         AddNodes(truenode_id, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
-                 node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, tree_size);
+                 node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     // We don't need to store the false branch pointer since we know it is always in the immediate next entry in nodes_.
     // nodes_[node_pos].falsenode_inc_or_n_weights.ptr = &nodes_[false_branch];
     nodes_[node_pos].truenode_or_weight.ptr = &nodes_[true_branch];
@@ -710,9 +775,14 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   if (has_missing_tracks_) {                                                                           \
     while (root->is_not_leaf()) {                                                                      \
       val = x_data[root->feature_id];                                                                  \
-      root = val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))   \
-                 ? root->truenode_or_weight.ptr                                                        \
-                 : root + 1;                                                                           \
+      if (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))) {\
+        went_right_child[root - &nodes_[0]]++;\
+        root = root->truenode_or_weight.ptr;\
+      }\
+      else {\
+        went_left_child[root - &nodes_[0]]++;\
+        root++;\
+      }\
     }                                                                                                  \
   } else {                                                                                             \
     while (root->is_not_leaf()) {                                                                      \
@@ -790,6 +860,14 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           return root;
       }
     }
+  }
+
+  it_number++;
+  if (it_number % 1090685700 == 0) {
+      for (auto root : roots_) {
+          calcWeight((size_t)(root - &nodes_[0]));
+      }
+      std::cout << big_cnt << ' ' << small_cnt << std::endl;
   }
   return root;
 }
