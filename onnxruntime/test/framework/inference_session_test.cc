@@ -2975,7 +2975,7 @@ float calculateSD(std::vector<float>::iterator beg, std::vector<float>::iterator
     return sqrt(standardDeviation / n);
 }
 
-TEST(InferenceSessionTests, BenchSameMode) {
+void benchmarkModel(size_t tests, int number_cnt, std::string model, std::string input) {
     // Initialize logging manager
     auto logging_manager = std::make_unique<logging::LoggingManager>(
             std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
@@ -2994,15 +2994,15 @@ TEST(InferenceSessionTests, BenchSameMode) {
     // Initialize and load the InferenceSession
     InferenceSession session{so, *env};
 
-    ASSERT_STATUS_OK(session.Load("model.onnx"));
+    ASSERT_STATUS_OK(session.Load(model.c_str()));
     ASSERT_STATUS_OK(session.Initialize());
 
     // Input numpy array
-    std::fstream input_file("input.txt");
+    std::fstream input_file(input.c_str());
     std::vector<float> values = {};
-    for(float number; input_file >> number; ) { values.push_back(number); }
+    for(float number; input_file >> number;) { values.push_back(number); }
 
-    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 5, 5};
+    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / number_cnt, number_cnt};
 
     std::cout << "Loaded: " << values.size() << std::endl;
 
@@ -3019,7 +3019,7 @@ TEST(InferenceSessionTests, BenchSameMode) {
     // Configure RunOptions
     RunOptions run_options;
 
-    const int MAX_ITER = 10;
+    const size_t MAX_ITER = tests;
     std::vector<float> times = {};
 
     for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
@@ -3035,7 +3035,7 @@ TEST(InferenceSessionTests, BenchSameMode) {
 
         const auto end = clock();
         const auto time_in_seconds = (double)(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Total time in predict " << time_in_seconds << std::endl; 
+        std::cout << "Total time in predict " << time_in_seconds << std::endl;
         times.push_back(time_in_seconds);
     }
 
@@ -3044,73 +3044,20 @@ TEST(InferenceSessionTests, BenchSameMode) {
     std::cout << "Same Mode - Average " << average << "; Standard Deviation " << SD << std::endl;
 }
 
-TEST(InferenceSessionTests, BenchNotSameMode) {
-    // Initialize logging manager
-    auto logging_manager = std::make_unique<logging::LoggingManager>(
-            std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-            LoggingManager::InstanceType::Temporal);
+TEST(InferenceSessionTests, BenchSameModeOne) {
+    benchmarkModel(1, 5, "model.onnx", "input.txt");
+}
 
-    // Create environment
-    std::unique_ptr<Environment> env;
-    ASSERT_TRUE(Environment::Create(std::move(logging_manager), env).IsOK());
+TEST(InferenceSessionTests, BenchSameModeMany) {
+    benchmarkModel(10, 5, "model.onnx", "input.txt");
+}
 
-    // Configure session options
-    SessionOptions so;
-    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    so.graph_optimization_level = TransformerLevel::Level2;
-    so.intra_op_param.thread_pool_size = 1;
+TEST(InferenceSessionTests, BenchNotSameModeOne) {
+    benchmarkModel(1, 15, "model3.onnx", "input3.txt");
+}
 
-    // Initialize and load the InferenceSession
-    InferenceSession session{so, *env};
-
-    ASSERT_STATUS_OK(session.Load("model3.onnx"));
-    ASSERT_STATUS_OK(session.Initialize());
-
-    // Input numpy array
-    std::fstream input_file("input3.txt");
-    std::vector<float> values = {};
-    for(float number; input_file >> number; ) { values.push_back(number); }
-
-    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 15, 15};
-
-    std::cout << "Loaded: " << values.size() << std::endl;
-
-    OrtValue ml_value;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &ml_value);
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("float_input", ml_value));
-
-    // Configure output
-    std::vector<std::string> output_names;
-    output_names.push_back("variable");
-    std::vector<OrtValue> fetches;
-
-    // Configure RunOptions
-    RunOptions run_options;
-
-    const int MAX_ITER = 10;
-    std::vector<float> times = {};
-
-    for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
-        const auto begin = clock();
-
-        {
-            common::Status st = session.Run(run_options, feeds, output_names, &fetches);
-            if (!st.IsOK()) {
-                std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-            }
-            ASSERT_TRUE(st.IsOK());
-        }
-
-        const auto end = clock();
-        const auto time_in_seconds = (double)(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Total time in predict " << time_in_seconds << std::endl; 
-        times.push_back(time_in_seconds);
-    }
-
-    const auto average = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-    const auto SD = calculateSD(times.begin(), times.end());
-    std::cout << "Not SM - Average " << average << "; Standard Deviation " << SD << std::endl;
+TEST(InferenceSessionTests, BenchNotSameModeMany) {
+    benchmarkModel(10, 15, "model3.onnx", "input3.txt");
 }
 
 }  // namespace test
