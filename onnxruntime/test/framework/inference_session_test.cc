@@ -2956,7 +2956,26 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 
-TEST(InferenceSessionTests, Bench) {
+
+float calculateSD(std::vector<float>::iterator beg, std::vector<float>::iterator end) {
+    float sum = 0.0, mean, standardDeviation = 0.0;
+    int n = 0;
+
+    for (auto curr = beg; curr != end; curr++) {
+        sum += *curr;
+        n++;
+    }
+
+    mean = sum / n;
+
+    for (auto curr = beg; curr != end; curr++) {
+        standardDeviation += (*curr - mean) * (*curr - mean);
+    }
+
+    return sqrt(standardDeviation / n);
+}
+
+void benchmarkModel(size_t tests, int number_cnt, std::string model, std::string input) {
     // Initialize logging manager
     auto logging_manager = std::make_unique<logging::LoggingManager>(
             std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
@@ -2975,15 +2994,15 @@ TEST(InferenceSessionTests, Bench) {
     // Initialize and load the InferenceSession
     InferenceSession session{so, *env};
 
-    ASSERT_STATUS_OK(session.Load("model.onnx"));
+    ASSERT_STATUS_OK(session.Load(model.c_str()));
     ASSERT_STATUS_OK(session.Initialize());
 
     // Input numpy array
-    std::fstream input_file("input.txt");
+    std::fstream input_file(input.c_str());
     std::vector<float> values = {};
-    for(float number; input_file >> number; ) { values.push_back(number); }
+    for(float number; input_file >> number;) { values.push_back(number); }
 
-    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / 5, 5};
+    std::vector<int64_t> dims = {static_cast<long long>(values.size()) / number_cnt, number_cnt};
 
     std::cout << "Loaded: " << values.size() << std::endl;
 
@@ -3000,7 +3019,7 @@ TEST(InferenceSessionTests, Bench) {
     // Configure RunOptions
     RunOptions run_options;
 
-    const int MAX_ITER = 10;
+    const size_t MAX_ITER = tests;
     std::vector<float> times = {};
 
     for(size_t ITER = 0; ITER < MAX_ITER; ITER ++) {
@@ -3016,12 +3035,29 @@ TEST(InferenceSessionTests, Bench) {
 
         const auto end = clock();
         const auto time_in_seconds = (double)(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Total time in predict " << time_in_seconds << std::endl; 
+        std::cout << "Total time in predict " << time_in_seconds << std::endl;
         times.push_back(time_in_seconds);
     }
 
     const auto average = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-    std::cout << "Average " << average << std::endl;
+    const auto SD = calculateSD(times.begin(), times.end());
+    std::cout << "Same Mode - Average " << average << "; Standard Deviation " << SD << std::endl;
+}
+
+TEST(InferenceSessionTests, BenchSameModeOne) {
+    benchmarkModel(1, 5, "model.onnx", "input.txt");
+}
+
+TEST(InferenceSessionTests, BenchSameModeMany) {
+    benchmarkModel(10, 5, "model.onnx", "input.txt");
+}
+
+TEST(InferenceSessionTests, BenchNotSameModeOne) {
+    benchmarkModel(1, 15, "model3.onnx", "input3.txt");
+}
+
+TEST(InferenceSessionTests, BenchNotSameModeMany) {
+    benchmarkModel(10, 15, "model3.onnx", "input3.txt");
 }
 
 }  // namespace test
