@@ -40,6 +40,8 @@ class TreeEnsembleCommonAttributes {
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
+  static const int SMALL_TREE = 4;
+
   size_t nodes_number_;
 
   std::vector<ThresholdType> base_values_;
@@ -90,8 +92,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
               const std::vector<ThresholdType>& target_class_weights_as_tensor);
 
  protected:
-  TreeNodeElement<ThresholdType>* findAnswer(TreeNodeElement<ThresholdType>* root,
-                                                       const InputType* x_data) const;
+  inline size_t findAnswer(size_t root_idx, const InputType* x_data) const;
 
   size_t ProcessTreeNodeLeave(size_t root_idx, const InputType* x_data) const;
 
@@ -313,11 +314,11 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (previous_tree_id == -1 || (previous_tree_id != node_tree_ids[i].tree_id)) {
       // New tree.
       int64_t tree_id = node_tree_ids[i].tree_id;
-      //std::cout<<"adding node "<<std::endl;
+      ////std::cout<<"adding node "<<std::endl;
       size_t root_position =
           AddNodes(i, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
                    nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
-      //std::cout<<"added node "<<root_position<<std::endl;
+      ////std::cout<<"added node "<<root_position<<std::endl;
       roots_.push_back(root_position);
       previous_tree_id = tree_id;
     }
@@ -726,139 +727,83 @@ inline bool _isnan_(double x) { return std::isnan(x); }
 inline bool _isnan_(int64_t) { return false; }
 inline bool _isnan_(int32_t) { return false; }
 
-template <typename InputType, typename ThresholdType, typename OutputType>
-TreeNodeElement<ThresholdType>*
-TreeEnsembleCommon<InputType, ThresholdType, OutputType>::findAnswer(
-    TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
-  // std::cout<<"brbrb "<<std::endl;
-  size_t rootIdx = root - &nodes_[0];
-  size_t n = (size_t)tree_size[rootIdx];
+#include <stdlib.h>     /* srand, rand */
+#include <time.h>       /* time */
 
-  auto temp = root;
+template <typename InputType, typename ThresholdType, typename OutputType>
+inline size_t
+TreeEnsembleCommon<InputType, ThresholdType, OutputType>::findAnswer(
+    size_t root_idx, const InputType* x_data) const {
+  size_t n = (size_t)tree_size[root_idx];
+  // std::vector<bool> comp_now(n);
+
+  // int r = rand() % 1000;
 
   InputType val;
   ThresholdType threshold;
 
-  if (same_mode_) {
-    if (has_missing_tracks_) {
-      for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-        val = x_data[temp->feature_id];
-        threshold = temp->value_or_unique_weight;
+  // if (same_mode_) {
+  //   if (has_missing_tracks_) {
+      for (size_t i = root_idx; i < n + root_idx; i++) {
+        val = x_data[feature_id_[i]];
+        threshold = value_or_unique_weight_[i];
 
-        compared[i] = val <= threshold || (root->is_missing_track_true() && _isnan_(val));
+        compared[i] = val <= threshold || (is_missing_track_true(root_idx) && _isnan_(val));
       }
-    }
-    else {
-      for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-        val = x_data[temp->feature_id];
-        threshold = temp->value_or_unique_weight;
+  //   }
+  //   else {
+  //     for (size_t i = root_idx; i < n + root_idx; i++) {
+  //       //std::cout<<"calc "<<i<<" "<<n<<" random "<<r<<std::endl;
+  //       val = x_data[feature_id_[i]];
+  //       threshold = value_or_unique_weight_[i];
 
-        compared[i] = val <= temp->value_or_unique_weight;
-      }
-    }
+  //       comp_now[i - root_idx] = (val <= value_or_unique_weight_[i]);
+  //     }
+  //   }
+  //   /*
+  //   TO ADD OTHER MODES
+  //   */
+  // }
+  // else {
+    // for (size_t i = root_idx; i < n + root_idx; i++) {
+    //   val = x_data[feature_id_[i]];
+    //   threshold = value_or_unique_weight_[i];
+
+    //   switch (mode(root_idx)) {
+    //     case NODE_MODE::BRANCH_LEQ:
+    //       compared[i] = val <= threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::BRANCH_LT:
+    //       compared[i] = val < threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::BRANCH_GTE:
+    //       compared[i] = val >= threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::BRANCH_GT:
+    //       compared[i] = val > threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::BRANCH_EQ:
+    //       compared[i] = val == threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::BRANCH_NEQ:
+    //       compared[i] = val != threshold || (is_missing_track_true(root_idx) && _isnan_(val));
+    //       break;
+    //     case NODE_MODE::LEAF:
+    //       break;
+    //   }
+    // }
+  // }
+
+  size_t traversing_idx = root_idx;
+  //std::cout<<"enter random "<<r<<std::endl;
+  while (is_not_leaf(traversing_idx)) {
+    //std::cout<<"trav "<<traversing_idx<<' '<<root_idx + n<<" random "<<r<<std::endl;
+    //std::cout<<"trav comp "<<traversing_idx - root_idx<<" random "<<r<<std::endl;
+    traversing_idx = true ? truenode_or_weight_[traversing_idx].ptr : traversing_idx + 1;
   }
-  else {
-    for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-      val = x_data[temp->feature_id];
-      threshold = temp->value_or_unique_weight;
+  //std::cout<<"escape random "<<r<<std::endl;
 
-      switch (root->mode()) {
-        case NODE_MODE::BRANCH_LEQ:
-          compared[i] = val <= threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_LT:
-          compared[i] = val < threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_GTE:
-          compared[i] = val >= threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_GT:
-          compared[i] = val > threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_EQ:
-          compared[i] = val == threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_NEQ:
-          compared[i] = val != threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::LEAF:
-          break;
-      }
-    }
-  }
-
-  while (root->is_not_leaf()) {
-    root = compared[root - &nodes_[0]] ? root->truenode_or_weight.ptr : root + 1;
-  }
-
-  return root;
-}
-
-template <typename InputType, typename ThresholdType, typename OutputType>
-TreeNodeElement<ThresholdType>*
-TreeEnsembleCommon<InputType, ThresholdType, OutputType>::findAnswer(
-    TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
-  size_t rootIdx = root - &nodes_[0];
-  size_t n = (size_t)tree_size[rootIdx];
-
-  auto temp = root;
-
-  InputType val;
-  ThresholdType threshold;
-
-  if (same_mode_) {
-    if (has_missing_tracks_) {
-      for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-        val = x_data[temp->feature_id];
-        threshold = temp->value_or_unique_weight;
-
-        compared[i] = val <= threshold || (root->is_missing_track_true() && _isnan_(val));
-      }
-    }
-    else {
-      for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-        val = x_data[temp->feature_id];
-        threshold = temp->value_or_unique_weight;
-
-        compared[i] = val <= temp->value_or_unique_weight;
-      }
-    }
-  }
-  else {
-    for (size_t i = rootIdx; i < n + rootIdx; i++, temp++) {
-      val = x_data[temp->feature_id];
-      threshold = temp->value_or_unique_weight;
-
-      switch (root->mode()) {
-        case NODE_MODE::BRANCH_LEQ:
-          compared[i] = val <= threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_LT:
-          compared[i] = val < threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_GTE:
-          compared[i] = val >= threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_GT:
-          compared[i] = val > threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_EQ:
-          compared[i] = val == threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::BRANCH_NEQ:
-          compared[i] = val != threshold || (root->is_missing_track_true() && _isnan_(val));
-          break;
-        case NODE_MODE::LEAF:
-          break;
-      }
-    }
-  }
-
-  while (root->is_not_leaf()) {
-    root = compared[root - &nodes_[0]] ? root->truenode_or_weight.ptr : root + 1;
-  }
-
-  return root;
+  return traversing_idx;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -866,17 +811,11 @@ size_t
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     size_t root_idx, const InputType* x_data) const {
   InputType val;
-  //std::cout<<"starting processing "<<root_idx<<std::endl;
-
   if (same_mode_) {
     switch (mode(root_idx)) {
       case NODE_MODE::BRANCH_LEQ:
         if (has_missing_tracks_) {
-          while (is_not_leaf(root_idx)) {
-            if (tree_size[root_idx] <= 16) { //make constant
-              return findAnswer(root, x_data);
-            }
-
+          while (tree_size[root_idx] > SMALL_TREE) {
             val = x_data[feature_id_[root_idx]];
             root_idx = (val <= value_or_unique_weight_[root_idx] || (is_missing_track_true(root_idx) && _isnan_(val)))
                        ? truenode_or_weight_[root_idx].ptr
@@ -884,8 +823,8 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           }
         } else {
           while (is_not_leaf(root_idx)) {
-            if (tree_size[root_idx] <= 16) { //make constant
-              return findAnswer(root, x_data);
+            if (tree_size[root_idx] <= SMALL_TREE) { //make constant
+              return findAnswer(root_idx, x_data);
             }
 
             val = x_data[feature_id_[root_idx]];
@@ -914,9 +853,9 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
   } else {  // Different rules to compare to node thresholds.
     ThresholdType threshold;
     while (1) {
-      if (tree_size[root_idx] <= 16) { //make constant
-        return findAnswer(root, x_data);
-      }
+      // if (tree_size[root_idx] <= SMALL_TREE) { //make constant
+      //   return findAnswer(root_idx, x_data);
+      // }
 
       val = x_data[feature_id_[root_idx]];
       threshold = value_or_unique_weight_[root_idx];
@@ -950,7 +889,8 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
       }
     }
   }
-  //std::cout<<"returning "<<root_idx<<std::endl;
+  return findAnswer(root_idx, x_data);
+
   return root_idx;
 }
 
