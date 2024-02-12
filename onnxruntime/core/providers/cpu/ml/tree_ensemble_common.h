@@ -40,7 +40,7 @@ class TreeEnsembleCommonAttributes {
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
-  static const int SMALL_TREE = 4;
+  static const int SMALL_TREE = 8;
 
   size_t nodes_number_;
 
@@ -799,7 +799,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::findAnswer(
   while (is_not_leaf(traversing_idx)) {
     //std::cout<<"trav "<<traversing_idx<<' '<<root_idx + n<<" random "<<r<<std::endl;
     //std::cout<<"trav comp "<<traversing_idx - root_idx<<" random "<<r<<std::endl;
-    traversing_idx = true ? truenode_or_weight_[traversing_idx].ptr : traversing_idx + 1;
+    traversing_idx = compared[traversing_idx] ? truenode_or_weight_[traversing_idx].ptr : traversing_idx + 1;
   }
   //std::cout<<"escape random "<<r<<std::endl;
 
