@@ -69,7 +69,7 @@ struct TreeNodeElement;
 
 template <typename T>
 union PtrOrWeight {
-  TreeNodeElement<T>* ptr;
+  size_t ptr;
   struct WeightData {
     int32_t weight;
     int32_t n_weights;
@@ -78,11 +78,7 @@ union PtrOrWeight {
 
 template <typename T>
 struct TreeNodeElement {
-  int feature_id;
-
   // Stores the node threshold or the weights if the tree has one target.
-  T value_or_unique_weight;
-
   // The onnx specification says hitrates is used to store information about the node,
   // but this information is not used for inference.
   // T hitrates;
@@ -96,11 +92,6 @@ struct TreeNodeElement {
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> truenode_or_weight;
-  uint8_t flags;
-
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -125,7 +116,7 @@ class TreeAggregator {
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& /*prediction*/,
-                                  const TreeNodeElement<ThresholdType>& /*root*/) const {}
+                                  const ThresholdType& /*value_or_unique_weight*/) const {}
 
   void MergePrediction1(ScoreValue<ThresholdType>& /*prediction*/, ScoreValue<ThresholdType>& /*prediction2*/) const {}
 
@@ -175,8 +166,8 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score += root.value_or_unique_weight;
+                                  const ThresholdType& value_or_unique_weight) const {
+    prediction.score += value_or_unique_weight;
   }
 
   void MergePrediction1(ScoreValue<ThresholdType>& prediction,
@@ -277,9 +268,9 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight < prediction.score)
-                           ? root.value_or_unique_weight
+                                  const ThresholdType& value_or_unique_weight) const {
+    prediction.score = (!(prediction.has_score) || value_or_unique_weight < prediction.score)
+                           ? value_or_unique_weight
                            : prediction.score;
     prediction.has_score = 1;
   }
@@ -335,9 +326,9 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight > prediction.score)
-                           ? root.value_or_unique_weight
+                                  const ThresholdType& value_or_unique_weight) const {
+    prediction.score = (!(prediction.has_score) || value_or_unique_weight > prediction.score)
+                           ? value_or_unique_weight
                            : prediction.score;
     prediction.has_score = 1;
   }
