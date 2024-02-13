@@ -95,8 +95,9 @@ struct TreeNodeElement {
   // If it is a leaf, it contains `weight` and `n_weights` attributes which are used to indicate the position of the
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
-  PtrOrWeight<T> truenode_or_weight;
   uint8_t flags;
+  bool big;
+  bool comparison;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
@@ -139,7 +140,7 @@ class TreeAggregator {
   // N outputs
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/,
-                                 const TreeNodeElement<ThresholdType>& /*root*/,
+                                 const PtrOrWeight<ThresholdType>& /*truenode_or_weight*/,
                                  gsl::span<const SparseValue<ThresholdType>> /*weights*/) const {}
 
   void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/,
@@ -194,10 +195,10 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   // N outputs
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                                 const TreeNodeElement<ThresholdType>& root,
+                                 const PtrOrWeight<ThresholdType>& truenode_or_weight,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
       predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
@@ -297,10 +298,10 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
   // N outputs
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                                 const TreeNodeElement<ThresholdType>& root,
+                                 const PtrOrWeight<ThresholdType>& truenode_or_weight,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
@@ -354,10 +355,10 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   // N outputs
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
-                                 const TreeNodeElement<ThresholdType>& root,
+                                 const PtrOrWeight<ThresholdType>& truenode_or_weight,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
