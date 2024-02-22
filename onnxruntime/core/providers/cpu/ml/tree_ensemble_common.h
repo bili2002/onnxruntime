@@ -295,7 +295,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     return nodes_[left.second].feature_id < nodes_[right.second].feature_id;
   });
 
-  updated_mapping.fill(0);
+  for (size_t i=0; i<nodes_treeids.size(); i++) {
+    updated_mapping[i] = 0;
+  }
+
   nodes_.clear();
   nodes_.reserve(limit);
 
