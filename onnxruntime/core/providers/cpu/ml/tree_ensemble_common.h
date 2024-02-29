@@ -97,7 +97,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
                   const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
                   const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
                   const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping,
-                  int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids, size_t node_pos);
+                  int64_t tree_id, const InlinedVector<TreeNodeElementId>& node_tree_ids, size_t node_pos, bool level);
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -289,7 +289,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
                    nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
 
       AddNodes(i, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor, nodes_values,
-                nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, root_position);
+                nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, root_position, 1);
 
       roots_.push_back(&nodes_[root_position]);
       previous_tree_id = tree_id;
@@ -398,9 +398,12 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     const InlinedVector<size_t>& falsenode_ids, const std::vector<int64_t>& nodes_featureids,
     const std::vector<ThresholdType>& nodes_values_as_tensor, const std::vector<float>& node_values,
     const std::vector<int64_t>& nodes_missing_value_tracks_true, std::vector<size_t>& updated_mapping, int64_t tree_id,
-    const InlinedVector<TreeNodeElementId>& node_tree_ids, size_t node_pos) {
+    const InlinedVector<TreeNodeElementId>& node_tree_ids, size_t node_pos, bool level) {
+  if (!nodes_[node_pos].is_not_leaf()) {
+    return node_pos;
+  }
 
-  if (nodes_[node_pos].is_not_leaf()) {
+  if (level) {
     size_t false_branch = AddNode(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
             node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     nodes_[node_pos].falsenode_or_weight.ptr = &nodes_[false_branch];
@@ -410,10 +413,25 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     nodes_[node_pos].truenode_or_weight.ptr = &nodes_[true_branch];
 
     AddNodes(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
-              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, false_branch);
+              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, false_branch, !level);
 
     AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
-              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, true_branch);
+              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, true_branch, !level);
+}
+else {
+      size_t false_branch = AddNode(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
+      nodes_[node_pos].falsenode_or_weight.ptr = &nodes_[false_branch];
+
+      AddNodes(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+                node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, false_branch, !level);
+
+      size_t true_branch = AddNode(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+              node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
+      nodes_[node_pos].truenode_or_weight.ptr = &nodes_[true_branch];
+
+      AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+                node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, true_branch, !level);
   }
   return node_pos;
 }
