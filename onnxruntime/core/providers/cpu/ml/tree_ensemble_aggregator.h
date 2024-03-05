@@ -79,6 +79,7 @@ union PtrOrWeight {
 template <typename T>
 struct TreeNodeElement {
   int feature_id;
+  size_t node_pos;
 
   // Stores the node threshold or the weights if the tree has one target.
   T value_or_unique_weight;
@@ -97,6 +98,7 @@ struct TreeNodeElement {
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> falsenode_or_weight;
   PtrOrWeight<T> truenode_or_weight;
+  std::function<TreeNodeElement<T>*(T, T, T, T, T, T, TreeNodeElement<T>*)> compFunc;
   uint8_t flags;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }

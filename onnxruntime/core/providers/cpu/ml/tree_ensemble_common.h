@@ -350,6 +350,97 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   return Status::OK();
 }
+  // bool (*compFunc) (T x1, T x2, T x3, T v1, T v2, T v3, PtrOrWeight<T> c1, PtrOrWeight<T> c2, PtrOrWeight<T> c3, PtrOrWeight<T> c4);
+
+inline bool _isnan_(float x) { return std::isnan(x); }
+inline bool _isnan_(double x) { return std::isnan(x); }
+inline bool _isnan_(int64_t) { return false; }
+inline bool _isnan_(int32_t) { return false; }
+
+#define NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, CMP_RIGHT, IS_NAN, IS_NAN_LEFT, IS_NAN_RIGHT, CHILD_LEFT, CHILD_RIGHT)                                                                            \
+  if (node_pos == 0) std::cout << #CMP << ' ' << #CMP_LEFT << ' ' << #CHILD_LEFT << ' ' << #CHILD_RIGHT << std::endl; \
+  nodes_[node_pos].compFunc = [](ThresholdType x1, ThresholdType x2, ThresholdType x3, ThresholdType v1, ThresholdType v2, ThresholdType v3, TreeNodeElement<ThresholdType>* root) {\
+    if (x1 CMP v1 || IS_NAN(x1)) {\
+      if (CHILD_LEFT == 0) {\
+        std::cout << "CHILD LEFT NOT LEAF;\n ";\
+        if (x3 CMP v3 || IS_NAN_RIGHT(x3)) {\
+          return root->truenode_or_weight.ptr->truenode_or_weight.ptr;\
+        }\
+        else {\
+          return root->truenode_or_weight.ptr->falsenode_or_weight.ptr;\
+        }\
+      }\
+      else {\
+        std::cout << "CHILD LEFT LEAF;\n ";\
+        return root->truenode_or_weight.ptr;\
+      }\
+    }\
+    else {\
+      if (CHILD_RIGHT == 0) {\
+        std::cout << "CHILD RIGHT NOT LEAF;\n ";\
+        if (x2 CMP v2 || IS_NAN_LEFT(x2)) {\
+          return root->falsenode_or_weight.ptr->truenode_or_weight.ptr;\
+        }\
+        else {\
+          return root->falsenode_or_weight.ptr->falsenode_or_weight.ptr;\
+        }\
+      }\
+      else {\
+        std::cout << "CHILD RIGHT LEAF;\n ";\
+        return root->falsenode_or_weight.ptr;\
+      }\
+    }\
+  };\
+
+#define NODE_ADD_LAMDA_LEFT(CMP, CMP_LEFT, IS_NAN, IS_NAN_LEFT, CHILD_LEFT)            \
+  uint8_t truenode_mode = static_cast<uint8_t>(cmodes[truenode_ids[i]]);\
+  if (node_pos == 0) std::cout << "rr " << (int)truenode_mode << ' ' << std::endl;\
+  if (truenode_ids[i] < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[falsenode_ids[i]] == 1) {\
+    if (truenode_mode == NODE_MODE::BRANCH_LEQ) {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, <=, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 0)\
+    }\
+    else if (truenode_mode == NODE_MODE::BRANCH_EQ) {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, ==, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 0)\
+    }\
+    else {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, ==, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 1)\
+    }\
+  }\
+  else {\
+    if (truenode_mode == NODE_MODE::BRANCH_LEQ) {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, <=, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 0)\
+    }\
+    else if (truenode_mode == NODE_MODE::BRANCH_EQ) {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, ==, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 0)\
+    }\
+    else {\
+      NODE_ADD_LAMDA_RIGHT(CMP, CMP_LEFT, ==, IS_NAN, IS_NAN_LEFT, _isnan_, CHILD_LEFT, 1)\
+    }\
+  }\
+
+#define NODE_ADD_LAMDA_PAR(CMP, IS_NAN)                                                                            \
+  if (falsenode_ids[i] < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[falsenode_ids[i]] == 1) {\
+    if (cmodes[falsenode_ids[i]] == NODE_MODE::BRANCH_LEQ) {\
+      NODE_ADD_LAMDA_LEFT(CMP, <=, IS_NAN, _isnan_, 0)\
+    }\
+    else if (cmodes[falsenode_ids[i]] == NODE_MODE::BRANCH_EQ) {\
+      NODE_ADD_LAMDA_LEFT(CMP, ==, IS_NAN, _isnan_, 0)\
+    }\
+    else {\
+      NODE_ADD_LAMDA_LEFT(CMP, ==, IS_NAN, _isnan_, 1)\
+    }\
+  }\
+  else {\
+    if (cmodes[falsenode_ids[i]] == NODE_MODE::BRANCH_LEQ) {\
+      NODE_ADD_LAMDA_LEFT(CMP, <=, IS_NAN, _isnan_, 0)\
+    }\
+    else if (cmodes[falsenode_ids[i]] == NODE_MODE::BRANCH_EQ) {\
+      NODE_ADD_LAMDA_LEFT(CMP, ==, IS_NAN, _isnan_, 0)\
+    }\
+    else {\
+      NODE_ADD_LAMDA_LEFT(CMP, ==, IS_NAN, _isnan_, 1)\
+    }\
+  }\
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNode(
@@ -374,11 +465,13 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNode(
   updated_mapping[i] = node_pos;
 
   TreeNodeElement<ThresholdType> node;
+  node.node_pos = node_pos;
   node.flags = static_cast<uint8_t>(cmodes[i]);
   node.feature_id = static_cast<int>(nodes_featureids[i]);
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
   }
+
   node.value_or_unique_weight =
       nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[i]) : nodes_values_as_tensor[i];
   if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
@@ -433,6 +526,24 @@ else {
       AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
                 node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids, true_branch, !level);
   }
+
+  if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
+    if (cmodes[i] == NODE_MODE::BRANCH_LEQ) {
+      NODE_ADD_LAMDA_PAR(<=, _isnan_)
+    }
+    else {
+      NODE_ADD_LAMDA_PAR(==, _isnan_)
+    }
+  }
+  else {
+    if (cmodes[i] == NODE_MODE::BRANCH_LEQ) {
+      NODE_ADD_LAMDA_PAR(<=, _isnan_)
+    }
+    else {
+      NODE_ADD_LAMDA_PAR(==, _isnan_)
+    }
+  }
+
   return node_pos;
 }
 
@@ -724,15 +835,24 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     }                                                                                                  \
   }
 
-inline bool _isnan_(float x) { return std::isnan(x); }
-inline bool _isnan_(double x) { return std::isnan(x); }
-inline bool _isnan_(int64_t) { return false; }
-inline bool _isnan_(int32_t) { return false; }
-
 template <typename InputType, typename ThresholdType, typename OutputType>
 TreeNodeElement<ThresholdType>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
+  std::cout << "BEGIN " << root->node_pos << std::endl;
+  while (root->is_not_leaf()) {
+    root = root->compFunc(
+      x_data[root->feature_id], x_data[root->truenode_or_weight.ptr->feature_id], x_data[root->falsenode_or_weight.ptr->feature_id],
+      root->value_or_unique_weight, root->truenode_or_weight.ptr->value_or_unique_weight, root->falsenode_or_weight.ptr->value_or_unique_weight,
+      root
+    );
+    std::cout << "after " << root->node_pos << ' ' << (int)root->flags << ' ' <<  root->is_not_leaf() << std::endl;
+  }
+  std::cout << "STOP " << root->node_pos << std::endl;
+
+
+  return root;
+
   InputType val;
   if (same_mode_) {
     switch (root->mode()) {
