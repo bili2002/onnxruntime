@@ -98,12 +98,7 @@ struct TreeNodeElement {
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> falsenode_or_weight;
   PtrOrWeight<T> truenode_or_weight;
-  std::function<TreeNodeElement<T>*(T, T, T, T, T, T, TreeNodeElement<T>*)> compFunc;
-  uint8_t flags;
-
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
+  std::function<TreeNodeElement<T>*(T, T, T, TreeNodeElement<T>*)> compFunc;
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
