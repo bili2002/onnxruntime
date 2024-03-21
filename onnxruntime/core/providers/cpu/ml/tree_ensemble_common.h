@@ -371,20 +371,51 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   }
   node.value_or_unique_weight =
       nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[i]) : nodes_values_as_tensor[i];
+  auto f = falsenode_ids[i];
+  auto t = truenode_ids[i];
   if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
-    node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
+    if (same_mode_ == true) {
+      node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
+    }
+    else {
+      std::swap(f, t);
+
+      switch (node.flags) {
+        case 1:
+          node.flags = 1;
+          break;
+        case 2:
+          node.flags = 8;
+          break;
+        case 4:
+          node.flags = 6;
+          break;
+        case 6:
+          node.flags = 4;
+          break;
+        case 8:
+          node.flags = 2;
+          break;
+        case 10:
+          node.flags = 12;
+          break;
+        case 12:
+          node.flags = 10;
+          break;
+      }
+    }
   }
   nodes_.push_back(std::move(node));
   if (nodes_[node_pos].is_not_leaf()) {
     size_t false_branch =
-        AddNodes(falsenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+        AddNodes(f, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
                  node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     if (false_branch != node_pos + 1) {
       ORT_THROW("False node must always be the next node, but it isn't at index ", node_pos, " with flags ",
                 static_cast<int>(nodes_[node_pos].flags));
     }
     size_t true_branch =
-        AddNodes(truenode_ids[i], cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
+        AddNodes(t, cmodes, truenode_ids, falsenode_ids, nodes_featureids, nodes_values_as_tensor,
                  node_values, nodes_missing_value_tracks_true, updated_mapping, tree_id, node_tree_ids);
     // We don't need to store the false branch pointer since we know it is always in the immediate next entry in nodes_.
     // nodes_[node_pos].falsenode_inc_or_n_weights.ptr = &nodes_[false_branch];
@@ -736,27 +767,27 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
       threshold = root->value_or_unique_weight;
       switch (root->mode()) {
         case NODE_MODE::BRANCH_LEQ:
-          root = val <= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val <= threshold ? root->truenode_or_weight.ptr
                                                                                      : root + 1;
           break;
         case NODE_MODE::BRANCH_LT:
-          root = val < threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val < threshold ? root->truenode_or_weight.ptr
                                                                                     : root + 1;
           break;
         case NODE_MODE::BRANCH_GTE:
-          root = val >= threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val >= threshold ? root->truenode_or_weight.ptr
                                                                                      : root + 1;
           break;
         case NODE_MODE::BRANCH_GT:
-          root = val > threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val > threshold ? root->truenode_or_weight.ptr
                                                                                     : root + 1;
           break;
         case NODE_MODE::BRANCH_EQ:
-          root = val == threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val == threshold ? root->truenode_or_weight.ptr
                                                                                      : root + 1;
           break;
         case NODE_MODE::BRANCH_NEQ:
-          root = val != threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
+          root = val != threshold ? root->truenode_or_weight.ptr
                                                                                      : root + 1;
           break;
         case NODE_MODE::LEAF:
