@@ -79,6 +79,7 @@ union PtrOrWeight {
 template <typename T>
 struct TreeNodeElement {
   int feature_id;
+  size_t node_pos;
 
   // Stores the node threshold or the weights if the tree has one target.
   T value_or_unique_weight;
@@ -95,6 +96,7 @@ struct TreeNodeElement {
   // If it is a leaf, it contains `weight` and `n_weights` attributes which are used to indicate the position of the
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
+  PtrOrWeight<T> falsenode_or_weight;
   PtrOrWeight<T> truenode_or_weight;
   uint8_t flags;
 
