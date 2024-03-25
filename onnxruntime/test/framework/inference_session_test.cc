@@ -3052,6 +3052,14 @@ TEST(InferenceSessionTests, BenchSameModeMany) {
     benchmarkModel(10, 5, "model.onnx", "input.txt");
 }
 
+TEST(InferenceSessionTests, BenchSameModeBigOne) {
+    benchmarkModel(1, 5, "model_samemode_big.onnx", "input.txt");
+}
+
+TEST(InferenceSessionTests, BenchSameModeBigMany) {
+    benchmarkModel(10, 5, "model_samemode_big.onnx", "input.txt");
+}
+
 TEST(InferenceSessionTests, BenchNotSameModeOne) {
     benchmarkModel(1, 15, "model3.onnx", "input3.txt");
 }
