@@ -3053,11 +3053,11 @@ TEST(InferenceSessionTests, BenchSameModeMany) {
 }
 
 TEST(InferenceSessionTests, BenchSameModeBigOne) {
-    benchmarkModel(1, 5, "model_samemode_big.onnx", "input.txt");
+    benchmarkModel(1, 15, "model_samemode_big2.onnx", "input3.txt");
 }
 
 TEST(InferenceSessionTests, BenchSameModeBigMany) {
-    benchmarkModel(10, 5, "model_samemode_big.onnx", "input.txt");
+    benchmarkModel(10, 15, "model_samemode_big2.onnx", "input3.txt");
 }
 
 TEST(InferenceSessionTests, BenchNotSameModeOne) {
