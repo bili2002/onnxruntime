@@ -3048,23 +3048,23 @@ TEST(InferenceSessionTests, BenchSameModeOne) {
     benchmarkModel(1, 5, "model.onnx", "input.txt");
 }
 
-TEST(InferenceSessionTests, BenchSameModeMany) {
-    benchmarkModel(10, 5, "model.onnx", "input.txt");
-}
-
-TEST(InferenceSessionTests, BenchSameModeBigOne) {
-    benchmarkModel(1, 15, "model_samemode_big2.onnx", "input3.txt");
-}
-
-TEST(InferenceSessionTests, BenchSameModeBigMany) {
-    benchmarkModel(10, 15, "model_samemode_big2.onnx", "input3.txt");
-}
-
 TEST(InferenceSessionTests, BenchNotSameModeOne) {
     benchmarkModel(1, 15, "model3.onnx", "input3.txt");
 }
 
-TEST(InferenceSessionTests, BenchNotSameModeMany) {
+TEST(InferenceSessionTests, BenchSameMode1) {
+    benchmarkModel(10, 5, "model_single_tree.onnx", "input_single_tree.txt");
+}
+
+TEST(InferenceSessionTests, BenchSameMode100) {
+    benchmarkModel(10, 5, "model.onnx", "input.txt");
+}
+
+TEST(InferenceSessionTests, BenchSameMode1000) {
+    benchmarkModel(10, 15, "model_samemode_big2.onnx", "input3.txt");
+}
+
+TEST(InferenceSessionTests, BenchNotSameMode100) {
     benchmarkModel(10, 15, "model3.onnx", "input3.txt");
 }
 
