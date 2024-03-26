@@ -579,25 +579,25 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   // auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
   // int64_t C = X->Shape().NumDimensions() == 2 ? X->Shape()[1] : 1;
 
-  int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
-  ScoreValue<ThresholdType> score;
-  for (int64_t i = 0; i < N; i++) {
-    score = {0, 0};
-
-    for (int64_t j = 0; j < n_trees_; ++j) {
-      agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data + i * stride));
-    }
-
-    agg.FinalizeScores1(
-        z_data + i,
-        score,
-        label_data == nullptr ? nullptr : (label_data + i)
-    );
-  }
-
+  // int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
+  // ScoreValue<ThresholdType> score;
   // for (int64_t i = 0; i < N; i++) {
-  //   *(z_data + i) = QuickSorter(x_data + i * stride);
+  //   score = {0, 0};
+
+  //   for (int64_t j = 0; j < n_trees_; ++j) {
+  //     agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data + i * stride));
+  //   }
+
+  //   agg.FinalizeScores1(
+  //       z_data + i,
+  //       score,
+  //       label_data == nullptr ? nullptr : (label_data + i)
+  //   );
   // }
+
+  for (int64_t i = 0; i < N; i++) {
+    *(z_data + i) = QuickSorter(x_data + i * stride);
+  }
 }  // namespace detail
 
 #define TREE_FIND_VALUE(CMP)                                                                           \
