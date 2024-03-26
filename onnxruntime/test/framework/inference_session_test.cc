@@ -3056,6 +3056,10 @@ TEST(InferenceSessionTests, BenchSameMode1) {
     benchmarkModel(10, 5, "model_single_tree.onnx", "input_single_tree.txt");
 }
 
+TEST(InferenceSessionTests, BenchSameMode10) {
+    benchmarkModel(10, 5, "model_10_trees.onnx", "input.txt");
+}
+
 TEST(InferenceSessionTests, BenchSameMode100) {
     benchmarkModel(10, 5, "model.onnx", "input.txt");
 }
