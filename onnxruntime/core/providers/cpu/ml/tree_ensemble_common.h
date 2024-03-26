@@ -105,7 +105,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   TreeNodeElement<ThresholdType>* ProcessTreeNodeLeave(TreeNodeElement<ThresholdType>* root,
                                                        const InputType* x_data) const;
 
-  OutputType QuickSorter(const InputType* x_data) const;
+  OutputType QuickScorer(const InputType* x_data) const;
 
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
@@ -596,7 +596,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   // }
 
   for (int64_t i = 0; i < N; i++) {
-    *(z_data + i) = QuickSorter(x_data + i * stride);
+    *(z_data + i) = QuickScorer(x_data + i * stride);
   }
 }  // namespace detail
 
@@ -700,27 +700,21 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 OutputType
-TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickSorter(const InputType* x_data) const {
-  //std::cout << "start sort" << std::endl;
+TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickScorer(const InputType* x_data) const {
   std::vector<uint64_t> v(n_trees_); // bit answer for tree
 
   for (size_t i=0; i<(size_t)n_trees_; i++) {
     v[i] = -1;
   }
-  //std::cout << "calc" << std::endl;
 
   for (size_t i = 0; i <= (size_t)max_feature_id_; i ++) {
     size_t it = offsets[i];
     size_t end = offsets[i + 1];
-    //std::cout << "while" << std::endl;
     while (x_data[i] <= thresholds[it] && it < end) {
       v[tree_ids[it]] &= bitvectors[it];
       it++;
-      //std::cout << "it" << it << ' ' << thresholds.size() << ' ' << end << std::endl;
     }
-    //std::cout << "end while" << std::endl;
   }
-  //std::cout << "find weight" << std::endl;
 
   size_t totalLeaves = 0;
   ThresholdType score = 0;
@@ -730,7 +724,6 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickSorter(const Inpu
     totalLeaves += leaves_number[i];
   }
   score /= n_trees_;
-  //std::cout << "score found" << std::endl;
 
   return score;
 }
