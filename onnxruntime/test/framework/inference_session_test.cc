@@ -3061,7 +3061,7 @@ TEST(InferenceSessionTests, BenchSameMode100) {
 }
 
 TEST(InferenceSessionTests, BenchSameMode1000) {
-    benchmarkModel(10, 15, "model_samemode_big2.onnx", "input3.txt");
+    benchmarkModel(10, 5, "model_1000_trees.onnx", "input_1000_trees.txt");
 }
 
 TEST(InferenceSessionTests, BenchNotSameMode100) {

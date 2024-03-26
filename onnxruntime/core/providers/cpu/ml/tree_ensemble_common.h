@@ -387,12 +387,13 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     return left.feature < right.feature;
   });
 
-  int last = split_nodes_[0].feature;
-  offsets.push_back(0);
+  std::vector<bool> filled_offset(max_feature_id_ + 1, false);
+  offsets.resize(max_feature_id_ + 1, 0);
+
   for (auto& curr : split_nodes_) {
-    if (last != curr.feature) {
-      offsets.push_back(bitvectors.size());
-      last = curr.feature;
+    if (!filled_offset[curr.feature]) {
+      offsets[curr.feature] = bitvectors.size();
+      filled_offset[curr.feature] = true;
     }
 
     bitvectors.push_back(curr.bitvector);
@@ -400,6 +401,12 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     thresholds.push_back(curr.threshold);
   }
   offsets.push_back(bitvectors.size());
+
+  for (int i=1; i<max_feature_id_; i++) {
+    if (!filled_offset[i]) {
+      offsets[i] = offsets[i - 1];
+    }
+  }
 
   return Status::OK();
 }
@@ -568,31 +575,29 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
 
   OutputType* z_data = Z->MutableData<OutputType>();
   const InputType* x_data = X->Data<InputType>();
-  // int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
 
   // auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
   // int64_t C = X->Shape().NumDimensions() == 2 ? X->Shape()[1] : 1;
 
-  // ScoreValue<ThresholdType> score;
+  int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
+  ScoreValue<ThresholdType> score;
+  for (int64_t i = 0; i < N; i++) {
+    score = {0, 0};
+
+    for (int64_t j = 0; j < n_trees_; ++j) {
+      agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data + i * stride));
+    }
+
+    agg.FinalizeScores1(
+        z_data + i,
+        score,
+        label_data == nullptr ? nullptr : (label_data + i)
+    );
+  }
 
   // for (int64_t i = 0; i < N; i++) {
-  //   score = {0, 0};
-
-
-  //   for (int64_t j = 0; j < n_trees_; ++j) {
-  //     agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[onnxruntime::narrow<size_t>(j)], x_data + i * stride));
-  //   }
-
-  //   agg.FinalizeScores1(
-  //       z_data + i,
-  //       score,
-  //       label_data == nullptr ? nullptr : (label_data + i)
-  //   );
+  //   *(z_data + i) = QuickSorter(x_data + i * stride);
   // }
-
-  for (int64_t i = 0; i < N; i++) {
-    *(z_data + i) = QuickSorter(x_data + i * stride);
-  }
 }  // namespace detail
 
 #define TREE_FIND_VALUE(CMP)                                                                           \
@@ -696,20 +701,26 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
 template <typename InputType, typename ThresholdType, typename OutputType>
 OutputType
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickSorter(const InputType* x_data) const {
+  //std::cout << "start sort" << std::endl;
   std::vector<uint64_t> v(n_trees_); // bit answer for tree
 
   for (size_t i=0; i<(size_t)n_trees_; i++) {
     v[i] = -1;
   }
+  //std::cout << "calc" << std::endl;
 
   for (size_t i = 0; i <= (size_t)max_feature_id_; i ++) {
     size_t it = offsets[i];
     size_t end = offsets[i + 1];
+    //std::cout << "while" << std::endl;
     while (x_data[i] <= thresholds[it] && it < end) {
       v[tree_ids[it]] &= bitvectors[it];
       it++;
+      //std::cout << "it" << it << ' ' << thresholds.size() << ' ' << end << std::endl;
     }
+    //std::cout << "end while" << std::endl;
   }
+  //std::cout << "find weight" << std::endl;
 
   size_t totalLeaves = 0;
   ThresholdType score = 0;
@@ -719,6 +730,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickSorter(const Inpu
     totalLeaves += leaves_number[i];
   }
   score /= n_trees_;
+  //std::cout << "score found" << std::endl;
 
   return score;
 }
