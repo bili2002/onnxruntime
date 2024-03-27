@@ -56,6 +56,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   std::vector<uint64_t> bitvectors;
 
   std::vector<size_t> offsets;
+  mutable std::vector<uint64_t> tree_answer;
 
   struct SplitNode {
     int feature;
@@ -247,6 +248,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   node_tree_ids.reserve(limit);
   nodes_.clear();
   nodes_.reserve(limit);
+  tree_answer.resize(limit);
   leftLeaves.reserve(limit);
   myLeaves.reserve(limit);
   roots_.clear();
@@ -701,27 +703,24 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
 template <typename InputType, typename ThresholdType, typename OutputType>
 OutputType
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickScorer(const InputType* x_data) const {
-  std::vector<uint64_t> v(n_trees_); // bit answer for tree
-
   for (size_t i=0; i<(size_t)n_trees_; i++) {
-    v[i] = -1;
+    tree_answer[i] = -1;
   }
 
   for (size_t i = 0; i <= (size_t)max_feature_id_; i ++) {
     size_t it = offsets[i];
     size_t end = offsets[i + 1];
     while (x_data[i] <= thresholds[it] && it < end) {
-      v[tree_ids[it]] &= bitvectors[it];
+      tree_answer[tree_ids[it]] &= bitvectors[it];
       it++;
     }
   }
 
-  size_t totalLeaves = 0;
+  size_t leavesPerTree = leaves_number[0]; // assuming all trees have the same number of nodes
   ThresholdType score = 0;
   for (size_t i=0; i<(size_t)n_trees_; i++) {
-    auto j = __builtin_ctzl(v[i]);
-    score += weights_[leaves_[totalLeaves + j].first].value;
-    totalLeaves += leaves_number[i];
+    auto j = __builtin_ctzl(tree_answer[i]);
+    score += weights_[leavesPerTree * i + j].value;
   }
   score /= n_trees_;
 
