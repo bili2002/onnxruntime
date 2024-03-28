@@ -65,7 +65,15 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
     uint64_t bitvector;
   };
 
-  std::vector<SplitNode> split_nodes_;
+  struct SplitNodeCompact {
+    int64_t tree_id;
+    double threshold;
+    uint64_t bitvector;
+  };
+
+  std::vector<SplitNodeCompact> split_nodes_;
+
+  std::vector<SplitNode> split_nodes_for_sorting;
   std::vector<ThresholdType> leaves_weight;
   std::vector<std::pair<int32_t&, int32_t&>> leaves_;
 
@@ -388,7 +396,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
 
-  sort(split_nodes_.begin(), split_nodes_.end(), [](const SplitNode& left, const SplitNode& right) {
+  sort(split_nodes_for_sorting.begin(), split_nodes_for_sorting.end(), [](const SplitNode& left, const SplitNode& right) {
     if (left.feature == right.feature) {
       return left.threshold > right.threshold;
     }
@@ -398,17 +406,15 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   std::vector<bool> filled_offset(max_feature_id_ + 1, false);
   offsets.resize(max_feature_id_ + 1, 0);
 
-  for (auto& curr : split_nodes_) {
+  for (auto& curr : split_nodes_for_sorting) {
     if (!filled_offset[curr.feature]) {
-      offsets[curr.feature] = bitvectors.size();
+      offsets[curr.feature] = split_nodes_.size();
       filled_offset[curr.feature] = true;
     }
 
-    bitvectors.push_back(curr.bitvector);
-    tree_ids.push_back(curr.tree_id);
-    thresholds.push_back(curr.threshold);
+    split_nodes_.push_back({curr.tree_id, curr.threshold, curr.bitvector});
   }
-  offsets.push_back(bitvectors.size());
+  offsets.push_back(split_nodes_.size());
 
   for (int i=1; i<max_feature_id_; i++) {
     if (!filled_offset[i]) {
@@ -490,7 +496,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNode(
       }
     }
 
-    split_nodes_.push_back({node.feature_id, tree_id, node.value_or_unique_weight, bitvector});
+    split_nodes_for_sorting.push_back({node.feature_id, tree_id, node.value_or_unique_weight, bitvector});
   }
   else {
     leaves_.push_back({
@@ -716,8 +722,8 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickScorer(const Inpu
   for (size_t i = 0; i <= (size_t)max_feature_id_; i ++) {
     size_t it = offsets[i];
     size_t end = offsets[i + 1];
-    while (x_data[i] <= thresholds[it] && it < end) {
-      tree_answer[tree_ids[it]] &= bitvectors[it];
+    while (x_data[i] <= split_nodes_[it].threshold && it < end) {
+      tree_answer[split_nodes_[it].tree_id] &= split_nodes_[it].bitvector;
       it++;
     }
   }
