@@ -52,7 +52,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
   std::vector<double> thresholds;
   std::vector<int64_t> tree_ids;
-  std::vector<int64_t> leaves_number;
+  std::vector<int64_t> leaves_offset;
   std::vector<uint64_t> bitvectors;
 
   std::vector<size_t> offsets;
@@ -66,6 +66,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   };
 
   std::vector<SplitNode> split_nodes_;
+  std::vector<ThresholdType> leaves_weight;
   std::vector<std::pair<int32_t&, int32_t&>> leaves_;
 
   std::vector<size_t> leftLeaves;
@@ -306,10 +307,11 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
 
   std::vector<size_t> used_node(nodes_treeids.size(), 0);
+  leaves_offset.push_back(0);
   for (i = 0; i < n_nodes_; ++i) {
     if (used_node[i] == false) {
       LeftLeaves(i, cmodes, truenode_ids, falsenode_ids, used_node, 0);
-      leaves_number.push_back(myLeaves[i]);
+      leaves_offset.push_back(leaves_offset.back() + myLeaves[i]);
     }
   }
 
@@ -372,6 +374,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
     ++leaf.truenode_or_weight.weight_data.n_weights;
     weights_.push_back(w);
+  }
+
+  for (auto& leave : leaves_) {
+    leaves_weight.push_back(weights_[leave.first].value);
   }
 
   has_missing_tracks_ = false;
@@ -716,11 +722,10 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::QuickScorer(const Inpu
     }
   }
 
-  size_t leavesPerTree = leaves_number[0]; // assuming all trees have the same number of nodes
   ThresholdType score = 0;
   for (size_t i=0; i<(size_t)n_trees_; i++) {
     auto j = __builtin_ctzl(tree_answer[i]);
-    score += weights_[leavesPerTree * i + j].value;
+    score += leaves_weight[leaves_offset[i] + j];
   }
   score /= n_trees_;
 
