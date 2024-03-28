@@ -95,7 +95,7 @@ struct TreeNodeElement {
   // If it is a leaf, it contains `weight` and `n_weights` attributes which are used to indicate the position of the
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
-  PtrOrWeight<T> truenode_or_weight;
+  PtrOrWeight<T> truenode_or_weight[2];
   uint8_t flags;
 
   inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
@@ -176,7 +176,7 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
                                   const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score += root.value_or_unique_weight;
+    prediction.score += root.truenode_or_weight[0].weight_data.weight;
   }
 
   void MergePrediction1(ScoreValue<ThresholdType>& prediction,
@@ -196,8 +196,8 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight[0].weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight[0].weight_data.n_weights; ++i, ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
       predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
@@ -278,8 +278,8 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
                                   const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight < prediction.score)
-                           ? root.value_or_unique_weight
+    prediction.score = (!(prediction.has_score) || root.truenode_or_weight[0].weight_data.weight < prediction.score)
+                           ? root.truenode_or_weight[0].weight_data.weight
                            : prediction.score;
     prediction.has_score = 1;
   }
@@ -299,8 +299,8 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight[0].weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight[0].weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
@@ -336,8 +336,8 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
                                   const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight > prediction.score)
-                           ? root.value_or_unique_weight
+    prediction.score = (!(prediction.has_score) || root.truenode_or_weight[0].weight_data.weight > prediction.score)
+                           ? root.truenode_or_weight[0].weight_data.weight
                            : prediction.score;
     prediction.has_score = 1;
   }
@@ -356,8 +356,8 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
-    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight[0].weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight[0].weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
