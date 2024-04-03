@@ -71,7 +71,7 @@ template <typename T>
 union PtrOrWeight {
   TreeNodeElement<T>* ptr;
   struct WeightData {
-    int32_t weight;
+    T weight;
     int32_t n_weights;
   } weight_data;
 };

@@ -80,7 +80,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
               const std::vector<ThresholdType>& target_class_weights_as_tensor);
 
  protected:
-  static const size_t v_pred = 8;
+  static const size_t v_pred = 1;
   void ProcessTreeNodeLeave(TreeNodeElement<ThresholdType>* root,
                                                        const InputType* x_data, int64_t stride, std::vector<ThresholdType>& scores) const;
 
@@ -464,18 +464,19 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     }
   }
 
-  auto i = N - v_pred;
-  for (size_t j = 0; j < v_pred; j++) {
-    scores[j] = 0;
-  }
+  // for (int64_t i = N - v_pred; i < N; i ++) {
+  //   for (size_t j = 0; j < v_pred; j++) {
+  //     scores[j] = 0;
+  //   }
 
-  for (auto j = 0; j < n_trees_; j++) {
-    ProcessTreeNodeLeave(roots_[j], x_data + i * stride, stride, scores);
-  }
+  //   for (auto j = 0; j < n_trees_; j++) {
+  //     ProcessTreeNodeLeave(roots_[j], x_data + i * stride, stride, scores);
+  //   }
 
-  for (size_t j = 0; j < v_pred; j++) {
-    *(z_data + i + j) = scores[j] / n_trees_;
-  }
+  //   for (size_t j = 0; j < v_pred; j++) {
+  //     *(z_data + i + j) = scores[j] / n_trees_;
+  //   }
+  // }
 }  // namespace detail
 
 #define TREE_FIND_VALUE(CMP)                                                                           \
@@ -504,7 +505,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     TreeNodeElement<ThresholdType>* root, const InputType* x_data, int64_t stride, std::vector<ThresholdType>& scores) const {
   std::vector<TreeNodeElement<ThresholdType>*> roots(v_pred, root);
 
-  for (int d=0; d<16; d++) {
+  for (int d=0; d<10; d++) {
     for (size_t i=0; i<v_pred; i++) {
       InputType val = x_data[roots[i]->feature_id + i * stride];
       bool comp = val <= roots[i]->value_or_unique_weight || (roots[i]->is_missing_track_true() && _isnan_(val));
@@ -513,7 +514,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
   }
 
   for (size_t i=0; i<v_pred; i++) {
-    scores[i] = roots[i]->truenode_or_weight[0].weight_data.weight;
+    scores[i] += roots[i]->truenode_or_weight[0].weight_data.weight;
   }
 }
 
