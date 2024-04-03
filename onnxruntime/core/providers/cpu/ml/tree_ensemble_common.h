@@ -398,10 +398,29 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   sort(split_nodes_for_sorting.begin(), split_nodes_for_sorting.end(), [](const SplitNode& left, const SplitNode& right) {
     if (left.feature == right.feature) {
+      if (left.threshold == right.threshold) {
+        return left.tree_id < right.tree_id;
+      }
       return left.threshold > right.threshold;
     }
     return left.feature < right.feature;
   });
+
+
+  size_t deleted = 0;
+  SplitNode* lastNode = &split_nodes_for_sorting[0];
+  for (size_t i=1; i<split_nodes_for_sorting.size(); i++) {
+    auto currNode = split_nodes_for_sorting[i];
+    if (lastNode->feature == currNode.feature && lastNode->tree_id == currNode.tree_id && lastNode->threshold == currNode.threshold) {
+      lastNode->bitvector &= currNode.bitvector;
+      deleted++;
+    }
+    else {
+      split_nodes_for_sorting[i - deleted] = currNode;
+      lastNode = &split_nodes_for_sorting[i - deleted];
+    }
+  }
+  split_nodes_for_sorting.resize(split_nodes_for_sorting.size() - deleted);
 
   std::vector<bool> filled_offset(max_feature_id_ + 1, false);
   offsets.resize(max_feature_id_ + 1, 0);
