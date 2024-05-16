@@ -125,7 +125,7 @@ class TreeAggregator {
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& /*prediction*/,
-                                  const TreeNodeElement<ThresholdType>& /*root*/) const {}
+                                  const ThresholdType& /*value*/) const {}
 
   void MergePrediction1(ScoreValue<ThresholdType>& /*prediction*/, ScoreValue<ThresholdType>& /*prediction2*/) const {}
 
@@ -175,8 +175,8 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score += root.value_or_unique_weight;
+                                  const ThresholdType& value) const {
+    prediction.score += value;
   }
 
   void MergePrediction1(ScoreValue<ThresholdType>& prediction,
@@ -277,9 +277,9 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight < prediction.score)
-                           ? root.value_or_unique_weight
+                                  const ThresholdType& value) const {
+    prediction.score = (!(prediction.has_score) || value < prediction.score)
+                           ? value
                            : prediction.score;
     prediction.has_score = 1;
   }
@@ -335,9 +335,9 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   // 1 output
 
   void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
-                                  const TreeNodeElement<ThresholdType>& root) const {
-    prediction.score = (!(prediction.has_score) || root.value_or_unique_weight > prediction.score)
-                           ? root.value_or_unique_weight
+                                  const ThresholdType& value) const {
+    prediction.score = (!(prediction.has_score) || value > prediction.score)
+                           ? value
                            : prediction.score;
     prediction.has_score = 1;
   }

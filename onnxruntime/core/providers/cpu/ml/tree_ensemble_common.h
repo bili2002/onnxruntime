@@ -49,11 +49,17 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   mutable std::vector<bool> comparisons;
   std::vector<size_t> offsets;
 
-  struct NodesCompressed {
+  union TruenodeOrWeight {
     size_t truenode;
+    ThresholdType weight;
+  };
+
+  struct NodesCompressed {
+    TruenodeOrWeight truenode_or_weight;
     size_t idx;
     bool isleaf;
   };
+
   std::vector<NodesCompressed> nodes_compressed_;
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
@@ -301,41 +307,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
 
-  std::vector<std::set<ThresholdType>> thresholds_by_feature;
-  thresholds_by_feature.resize(max_feature_id_ + 1);
-  for (auto& node : nodes_) {
-    if (!node.is_not_leaf()) {
-      continue;
-    }
-
-    thresholds_by_feature[node.feature_id].insert(node.value_or_unique_weight);
-  }
-
-  offsets.push_back(0);
-  for (auto& thresholds : thresholds_by_feature) {
-    thresholds_all.insert(thresholds_all.end(), thresholds.begin(), thresholds.end());
-    offsets.push_back(thresholds_all.size());
-  }
-
-  nodes_compressed_.resize(nodes_.size());
-  for (auto& node : nodes_) {
-    auto ptr = &node - &nodes_[0];
-
-    if (!node.is_not_leaf()) {
-      nodes_compressed_[ptr].isleaf = true;
-      continue;
-    }
-
-    auto offset_beg = offsets[node.feature_id];
-    auto offset_end = offsets[node.feature_id + 1];
-
-    nodes_compressed_[ptr].truenode = (int)(node.truenode_or_weight.ptr - &nodes_[0]);
-    nodes_compressed_[ptr].idx = std::find(thresholds_all.begin() + offset_beg, thresholds_all.begin() + offset_end, node.value_or_unique_weight) - thresholds_all.begin();
-    nodes_compressed_[ptr].isleaf = false;
-  }
-
-  comparisons.resize(thresholds_all.size(), true);
-
   n_trees_ = roots_.size();
   if (((int64_t)nodes_.size()) != n_nodes_) {
     ORT_THROW("Number of nodes in nodes_ (", nodes_.size(), ") is different from n_nodes (", n_nodes_, ").");
@@ -387,6 +358,42 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       break;
     }
   }
+
+  std::vector<std::set<ThresholdType>> thresholds_by_feature;
+  thresholds_by_feature.resize(max_feature_id_ + 1);
+  for (auto& node : nodes_) {
+    if (!node.is_not_leaf()) {
+      continue;
+    }
+
+    thresholds_by_feature[node.feature_id].insert(node.value_or_unique_weight);
+  }
+
+  offsets.push_back(0);
+  for (auto& thresholds : thresholds_by_feature) {
+    thresholds_all.insert(thresholds_all.end(), thresholds.begin(), thresholds.end());
+    offsets.push_back(thresholds_all.size());
+  }
+
+  nodes_compressed_.resize(nodes_.size());
+  for (auto& node : nodes_) {
+    auto ptr = &node - &nodes_[0];
+
+    if (!node.is_not_leaf()) {
+      nodes_compressed_[ptr].isleaf = true;
+      nodes_compressed_[ptr].truenode_or_weight.weight = node.value_or_unique_weight;
+      continue;
+    }
+
+    auto offset_beg = offsets[node.feature_id];
+    auto offset_end = offsets[node.feature_id + 1];
+
+    nodes_compressed_[ptr].truenode_or_weight.truenode = (int)(node.truenode_or_weight.ptr - &nodes_[0]);
+    nodes_compressed_[ptr].idx = std::find(thresholds_all.begin() + offset_beg, thresholds_all.begin() + offset_end, node.value_or_unique_weight) - thresholds_all.begin();
+    nodes_compressed_[ptr].isleaf = false;
+  }
+
+  comparisons.resize(thresholds_all.size(), true);
 
   return Status::OK();
 }
@@ -522,7 +529,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     score = {0, 0};
     for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
       auto ptr = ProcessTreeNodeLeave(roots_idx_[j], x_data + i * stride);
-      agg.ProcessTreeNodePrediction1(score, nodes_[ptr]);
+      agg.ProcessTreeNodePrediction1(score, nodes_compressed_[ptr].truenode_or_weight.weight);
     }
     agg.FinalizeScores1(z_data + i, score, label_data == nullptr ? nullptr : (label_data + i));
   }
@@ -553,7 +560,7 @@ size_t
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(size_t ptr, const InputType* x_data) const {
   while (!nodes_compressed_[ptr].isleaf) {
     ptr = comparisons[nodes_compressed_[ptr].idx]
-              ? nodes_compressed_[ptr].truenode
+              ? nodes_compressed_[ptr].truenode_or_weight.truenode
               : ptr + 1;
   }
 
