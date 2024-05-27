@@ -27,7 +27,8 @@ enum NODE_MODE : uint8_t {
   BRANCH_GTE = 6,
   BRANCH_GT = 8,
   BRANCH_EQ = 10,
-  BRANCH_NEQ = 12
+  BRANCH_NEQ = 12,
+  BRANCH_SM = 14, // Set membership
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
