@@ -679,7 +679,6 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum_as_tensor_precision) {
   GenTreeAndRunTest1_as_tensor_precision(3);
 }
 
-
 TEST(MLOpTest, TreeRegressorCategoricals) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
